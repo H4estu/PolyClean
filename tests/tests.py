@@ -6,9 +6,9 @@ Testing module.
 
 import geopandas as gpd
 import unittest
+import polyclean
 
 from shapely.geometry import Polygon
-from src import polyclean
 
 
 class TestFunctions(unittest.TestCase):
