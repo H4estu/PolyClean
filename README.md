@@ -5,6 +5,21 @@ This package provides utilities for cleaning up messy polygon data in geospatial
 
 This package relies heavily on [`Geopandas`](https://geopandas.org/en/stable/) and [`Shapely`](https://shapely.readthedocs.io/en/stable/), so understanding how those packages handle vector data will aid with understanding `polyclean` utilities.
 
+## Installation
+### UNIX-like (Linux, MacOS)
+
+`pip install polyclean`
+
+This should install the package and all necessary dependencies
+
+### Windows
+Make sure you have the following packages installed *first*:
+
+- `Fiona`
+- `GDAL`
+
+Any recent version (compatible with `Shapely > 0.10`) should suffice. 
+
 ## Examples
 ### Fill Holes
 Holes in polygons can be filled in based on area. To fill in all holes in a dataset, set the `threshold` value to a very large value (e.g. `1e6`).
