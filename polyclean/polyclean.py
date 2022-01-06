@@ -55,9 +55,32 @@ def eliminate(data: gpd.GeoDataFrame, field: str):
     return eliminated
 
 
-def eliminate_overlaps():
-    """Remove overlaps (by eliminate via longest shared edge?)"""
-    return NotImplemented
+def identify_overlaps(data: gpd.GeoDataFrame, flatten=True) -> gpd.GeoDataFrame:
+    """Identify regions of overlap between polygons.
+    
+    Parameters
+    ----------
+    data : gpd.GeoDataFrame
+
+    flatten : bool
+        Whether or not to flatten the original layer. Regions of overlap
+        will be burned into the original geometries, which will be 
+        modified to remove any overlap.
+    
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+    groups = data.overlay(data, how='intersection')
+
+    # Assume non-overlapping areas will not have the same area
+    groups['area'] = groups.area.round(4)
+
+    overlapping_regions = groups.groupby('area').filter(lambda x: len(x) > 1)
+    if flatten:
+        return update_layer(data, overlapping_regions)
+    else:
+        return overlapping_regions
 
 
 def fill_gaps(data, remove_gaps=True):
@@ -131,6 +154,33 @@ def fill_holes(data, threshold):
         polys_updated.append(combined)
     
     return gpd.GeoDataFrame(data, geometry=polys_updated, crs=data.crs)
+
+
+def update_layer(original_polys: gpd.GeoDataFrame, 
+                 update_polys: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Update a data frame with polygons from another.
+    
+    The shapes from ``update_polys`` will be "burned" into the original 
+    layer(``original_polys``).
+
+    original_polys : gpd.GeoDataFrame
+        The original polygon data layer.
+
+    update_polys : gpd.GeoDataFrame
+        The data layer with the shapes that will be "burned" into the 
+        original layer.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+    # Remove the regions from the original layer that intersect the 
+    # new geometries
+    erased = original_polys.overlay(update_polys, how='difference')
+
+    # Update ("burn in") the new shapes to the original layer.
+    # return erased.overlay(update_polys, how='union')
+    return erased.append(update_polys)
 
 
 def _fill_boundary(data: gpd.GeoDataFrame):
