@@ -71,14 +71,20 @@ def identify_overlaps(data: gpd.GeoDataFrame, flatten=True) -> gpd.GeoDataFrame:
     -------
     gpd.GeoDataFrame
     """
-    groups = data.overlay(data, how='intersection')
+    groups = (data
+        .overlay(data, how='intersection', keep_geom_type=True)
+        .explode(index_parts=True)
+    )
 
     # Assume non-overlapping areas will not have the same area
     groups['area'] = groups.area.round(4)
 
     overlapping_regions = groups.groupby('area').filter(lambda x: len(x) > 1)
+    overlapping_regions['overlap'] = 1
+
     if flatten:
-        return update_layer(data, overlapping_regions)
+        ovlps = overlapping_regions.dissolve().explode(index_parts=False)  # Remove duplicate regions
+        return update_layer(data, ovlps)
     else:
         return overlapping_regions
 
@@ -105,7 +111,7 @@ def fill_gaps(data, remove_gaps=True):
     data_boundary = _fill_boundary(data)
     
     print('Identifying gaps...')
-    gaps = data_boundary.overlay(data, how='difference').explode(index_parts=False)
+    gaps = data_boundary.overlay(data, how='difference', keep_geom_type=True).explode(index_parts=False)
     gaps['gap'] = 1
     gaps['gap_area'] = gaps.area
 
@@ -176,10 +182,12 @@ def update_layer(original_polys: gpd.GeoDataFrame,
     """
     # Remove the regions from the original layer that intersect the 
     # new geometries
-    erased = original_polys.overlay(update_polys, how='difference')
+    erased = (original_polys
+        .overlay(update_polys, how='difference', keep_geom_type=True)
+        .explode(index_parts=False)
+    )
 
     # Update ("burn in") the new shapes to the original layer.
-    # return erased.overlay(update_polys, how='union')
     return erased.append(update_polys)
 
 
