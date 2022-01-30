@@ -41,7 +41,12 @@ def eliminate(data: gpd.GeoDataFrame, field: str):
         # longest border with.
         parent_polys = [x for x in data[data[field].isna()].geometry if feature.intersects(x)]
         edges = {feature.intersection(pp).length: pp for pp in parent_polys}
-        lse_poly = max(edges.items(), key=operator.itemgetter(0))[1]
+
+        try:
+            lse_poly = max(edges.items(), key=operator.itemgetter(0))[1]
+        except ValueError:
+            warn('No longest edge found for feature. Skipping...')
+            continue
 
         # Merge (eliminate) the feature with the feature it shares the
         # longest edge with.
@@ -53,11 +58,6 @@ def eliminate(data: gpd.GeoDataFrame, field: str):
     eliminated = data[data[field].isna()]
 
     return eliminated
-
-
-def eliminate_overlaps():
-    """Remove overlaps (by eliminate via longest shared edge?)"""
-    return NotImplemented
 
 
 def fill_gaps(data, remove_gaps=True):
@@ -79,12 +79,15 @@ def fill_gaps(data, remove_gaps=True):
 
     # Set geometry precision to prevent rounding artifiacts.
     data = _round_geometries(data)
-    data_boundary = _fill_boundary(data)
+    data_boundary = _round_geometries(_fill_boundary(data))
     
     print('Identifying gaps...')
-    gaps = data_boundary.overlay(data, how='difference').explode(index_parts=False)
+    gaps = (data_boundary
+        .overlay(data, how='difference', keep_geom_type=True)
+        .explode(index_parts=False)
+    )
     gaps['gap'] = 1
-    gaps['gap_area'] = gaps.area
+    gaps['gap_area'] = round(gaps.area, 3)
 
     gaps_filled = data.append(gaps)
 
@@ -133,6 +136,76 @@ def fill_holes(data, threshold):
     return gpd.GeoDataFrame(data, geometry=polys_updated, crs=data.crs)
 
 
+def identify_overlaps(data: gpd.GeoDataFrame, flatten=True) -> gpd.GeoDataFrame:
+    """Identify regions of overlap between polygons.
+    
+    Parameters
+    ----------
+    data : gpd.GeoDataFrame
+
+    flatten : bool
+        Whether or not to flatten the original layer. Regions of overlap
+        will be burned into the original geometries, which will be 
+        modified to remove any overlap.
+    
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+    data = _round_geometries(data)
+
+    groups = (data
+        .overlay(data, how='intersection', keep_geom_type=True)
+        .explode(index_parts=True)
+    )
+
+    # Assume non-overlapping areas will not have the same area
+    groups['area'] = groups.area.round(3)
+    overlapping_regions = groups.groupby('area').filter(lambda x: len(x) > 1)
+    overlapping_regions['overlap'] = 1
+
+    if flatten:
+        # Remove duplicate regions
+        ovlps = (overlapping_regions
+            .dissolve()
+            .explode(index_parts=False)
+         ) 
+        ovlps = _round_geometries(ovlps)
+
+        return update_layer(data, ovlps)
+    else:
+        return overlapping_regions
+
+
+def update_layer(original_polys: gpd.GeoDataFrame, 
+                 update_polys: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
+    """Update a data frame with polygons from another.
+    
+    The shapes from ``update_polys`` will be "burned" into the original 
+    layer(``original_polys``).
+
+    original_polys : gpd.GeoDataFrame
+        The original polygon data layer.
+
+    update_polys : gpd.GeoDataFrame
+        The data layer with the shapes that will be "burned" into the 
+        original layer.
+
+    Returns
+    -------
+    gpd.GeoDataFrame
+    """
+    # Remove the regions from the original layer that intersect the 
+    # new geometries
+    erased = (original_polys
+        .overlay(update_polys, how='difference', keep_geom_type=True)
+        .explode(index_parts=True)
+    )
+
+    # Update ("burn in") the new shapes to the original layer.
+    return erased.append(update_polys)
+
+
 def _fill_boundary(data: gpd.GeoDataFrame):
     """Provide a single, hole-free polygon representing the boundary of
     the original dataset.
@@ -173,6 +246,6 @@ def _round_geometries(data_frame: gpd.GeoDataFrame):
 def _round_coordinates(polygon: Polygon):
     rounded_coords = []
     for pt in polygon.exterior.coords:
-        rounded_coords.append((round(pt[0], 4), round(pt[1], 4)))
+        rounded_coords.append((round(pt[0], 3), round(pt[1], 3)))
     
     return Polygon(rounded_coords)

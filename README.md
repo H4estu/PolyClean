@@ -10,7 +10,7 @@ This package relies heavily on [`Geopandas`](https://geopandas.org/en/stable/) a
 
 `pip install polyclean`
 
-This should install the package and all necessary dependencies
+This should install the package and all necessary dependencies.
 
 ### Windows
 Make sure you have the following packages installed *first*:
